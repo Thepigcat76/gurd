@@ -13,4 +13,4 @@ Compile the build file using your preferred compiler and run the compiled execut
 Passing r/run will run the project and passing d/dbg while run the project with gdb.
 You can add your own command line options, just adjust/copy the if statement in the build file.
 
-Finally, it makes sense to automate the compiling and executing of your build file. This can be done using a simple bash script.
+Finally, it makes sense to automate the compiling and executing of your build file. This can be done using a [simple bash script](https://github.com/Thepigcat76/gurd/blob/main/gurd).
