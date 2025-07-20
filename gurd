@@ -1,0 +1,6 @@
+#!/bin/bash
+
+cwd=$(pwd)
+
+mkdir .gurd 2>/dev/null
+gcc "$cwd/build.c" -o .gurd/build && ./.gurd/build $@
