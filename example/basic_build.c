@@ -26,8 +26,8 @@ static BuildOptions OPTS = {.compiler = "clang",
                             .std = "c23",
                             .target = TARGET_LINUX,
                             .out_dir = "./build/",
-                            .out_name = "cozy-wrath",
-                            .libraries = ARRAY("raylib", "GL", "m", "pthread", "dl", "rt", "X11", "cjson")};
+                            .out_name = "example",
+                            .libraries = ARRAY("m", "pthread")};
 
 int main(int argc, char **argv) {
   char *compiler = build_compiler(OPTS.compiler, OPTS.target);
