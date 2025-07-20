@@ -38,7 +38,6 @@ int main(int argc, char **argv) {
 
   build_dir(OPTS.out_dir);
   compile("%s %s %s %s -o %s%s", OPTS.compiler, files, libraries, flags, OPTS.out_dir, out_name);
-  // printf("Cmd: %s\n", _internal_cmd_buf);
 
   if (argc >= 2) {
     if (STR_CMP_OR(argv[1], "r", "run")) {
