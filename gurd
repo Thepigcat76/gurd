@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cwd="$(pwd)"
+
+mkdir -p .gurd
+
+if [[ "${1-}" == "--dir" ]]; then
+  cwd="$2"
+  shift 2
+fi
+
+gcc "$cwd/build.c" -o .gurd/build
+./.gurd/build "$@"
