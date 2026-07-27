@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
   cmd_execute(&cmd);
 
   // Run program
-  if (arg_eq(argc, argv, 1, "r")) {
+  if (arg_eq(argc, argv, 1, "r") || arg_eq(argc, argv, 1, "run")) {
     char args[1024] = {'\0'};
 
     if (args_arg_idx != -1 && args_arg_idx + 1 < argc) {

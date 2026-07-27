@@ -138,6 +138,57 @@ static int ensure_parent_dirs(const char *filepath, mode_t mode) {
   return 0;
 }
 
+static int copy_file(const char *src, const char *dst) {
+    FILE *in = fopen(src, "rb");
+    if (!in)
+        return -1;
+
+    FILE *out = fopen(dst, "wb");
+    if (!out) {
+        fclose(in);
+        return -1;
+    }
+
+    char buffer[8192];
+    size_t n;
+
+    while ((n = fread(buffer, 1, sizeof(buffer), in)) > 0) {
+        if (fwrite(buffer, 1, n, out) != n) {
+            fclose(in);
+            fclose(out);
+            return -1;
+        }
+    }
+
+    fclose(in);
+    fclose(out);
+    return 0;
+}
+
+static int make_dirs(const char *directory, mode_t mode) {
+  char tmp[PATH_MAX];
+  if (snprintf(tmp, sizeof tmp, "%s", directory) >= (int)sizeof tmp) {
+    errno = ENAMETOOLONG;
+    return -1;
+  }
+
+  size_t len = strlen(tmp);
+  if (len > 1 && tmp[len - 1] == '/')
+    tmp[len - 1] = '\0';
+
+  for (char *p = tmp + 1; *p; p++) {
+    if (*p == '/') {
+      *p = '\0';
+      if (mkdir(tmp, mode) != 0 && errno != EEXIST)
+        return -1;
+      *p = '/';
+    }
+  }
+  if (mkdir(tmp, mode) != 0 && errno != EEXIST)
+    return -1;
+  return 0;
+}
+
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((format(printf, 2, 3)))
 #endif
@@ -250,6 +301,16 @@ static int systemf(const char *fmt, ...) {
 static int args_contains(int argc, char **argv, const char *search_arg) {
   for (size_t i = 0; i < argc; i++) {
     if (strcmp(argv[i], search_arg) == 0) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+// Returns the index of 'search_arg' or -1, if it cant be found
+static int args_contains_len(int argc, char **argv, const char *search_arg, size_t arg_len) {
+  for (size_t i = 0; i < argc; i++) {
+    if (strncmp(argv[i], search_arg, arg_len) == 0) {
       return i;
     }
   }

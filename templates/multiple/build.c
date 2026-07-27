@@ -46,7 +46,7 @@ int main(int argc, char **argv) {
   cmd_execute(&cmd);
 
   // Run program
-  if (arg_eq(argc, argv, 1, "r")) {
+  if (arg_eq(argc, argv, 1, "r") || arg_eq(argc, argv, 1, "run")) {
     systemf("./" OUT_NAME);
   }
 
