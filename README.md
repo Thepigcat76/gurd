@@ -4,6 +4,8 @@ A simple single header c build tool for linux
 
 Run install.sh to install the tool
 
+You can change the compiler used to compile the build file by editing [gurd.sh](./gurd). By default, gcc is used.
+
 Look at the 'templates' dir for examples
 
 # How to use
