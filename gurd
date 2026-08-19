@@ -8,7 +8,9 @@ mkdir -p .gurd
 if [[ "${1-}" == "--dir" ]]; then
   cwd="$2"
   shift 2
+
+  cd $cwd
 fi
 
-gcc "$cwd/build.c" -o .gurd/build
+gcc "./build.c" -o .gurd/build
 ./.gurd/build "$@"

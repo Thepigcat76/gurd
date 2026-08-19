@@ -58,42 +58,53 @@ static void walk_dir(const char *path, void (*visit_func)(struct file_entry)) {
   closedir(dp);
 }
 
-static int remove_dir_recursive(const char *path, bool remove_self)
-{
-    DIR *dir = opendir(path);
-    if (!dir) return -1;
+static int remove_dir_recursive(const char *path, bool remove_self) {
+  DIR *dir = opendir(path);
+  if (!dir)
+    return -1;
 
-    int rc = 0;
-    struct dirent *ent;
+  int rc = 0;
+  struct dirent *ent;
 
-    while ((ent = readdir(dir)) != NULL) {
-        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
-            continue;
+  while ((ent = readdir(dir)) != NULL) {
+    if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+      continue;
 
-        char child[PATH_MAX];
-        if (snprintf(child, sizeof child, "%s/%s", path, ent->d_name) >= (int)sizeof child) {
-            errno = ENAMETOOLONG;
-            rc = -1;
-            break;
-        }
-
-        struct stat st;
-        if (lstat(child, &st) != 0) { rc = -1; break; }
-
-        if (S_ISDIR(st.st_mode)) {
-            if (remove_dir_recursive(child, 1) != 0) { rc = -1; break; }
-        } else {
-            if (unlink(child) != 0) { rc = -1; break; }
-        }
+    char child[PATH_MAX];
+    if (snprintf(child, sizeof child, "%s/%s", path, ent->d_name) >=
+        (int)sizeof child) {
+      errno = ENAMETOOLONG;
+      rc = -1;
+      break;
     }
 
-    closedir(dir);
-
-    if (rc == 0 && remove_self) {
-        if (rmdir(path) != 0) rc = -1;
+    struct stat st;
+    if (lstat(child, &st) != 0) {
+      rc = -1;
+      break;
     }
 
-    return rc;
+    if (S_ISDIR(st.st_mode)) {
+      if (remove_dir_recursive(child, 1) != 0) {
+        rc = -1;
+        break;
+      }
+    } else {
+      if (unlink(child) != 0) {
+        rc = -1;
+        break;
+      }
+    }
+  }
+
+  closedir(dir);
+
+  if (rc == 0 && remove_self) {
+    if (rmdir(path) != 0)
+      rc = -1;
+  }
+
+  return rc;
 }
 
 static int ensure_parent_dirs(const char *filepath, mode_t mode) {
@@ -139,30 +150,30 @@ static int ensure_parent_dirs(const char *filepath, mode_t mode) {
 }
 
 static int copy_file(const char *src, const char *dst) {
-    FILE *in = fopen(src, "rb");
-    if (!in)
-        return -1;
+  FILE *in = fopen(src, "rb");
+  if (!in)
+    return -1;
 
-    FILE *out = fopen(dst, "wb");
-    if (!out) {
-        fclose(in);
-        return -1;
-    }
-
-    char buffer[8192];
-    size_t n;
-
-    while ((n = fread(buffer, 1, sizeof(buffer), in)) > 0) {
-        if (fwrite(buffer, 1, n, out) != n) {
-            fclose(in);
-            fclose(out);
-            return -1;
-        }
-    }
-
+  FILE *out = fopen(dst, "wb");
+  if (!out) {
     fclose(in);
-    fclose(out);
-    return 0;
+    return -1;
+  }
+
+  char buffer[8192];
+  size_t n;
+
+  while ((n = fread(buffer, 1, sizeof(buffer), in)) > 0) {
+    if (fwrite(buffer, 1, n, out) != n) {
+      fclose(in);
+      fclose(out);
+      return -1;
+    }
+  }
+
+  fclose(in);
+  fclose(out);
+  return 0;
 }
 
 static int make_dirs(const char *directory, mode_t mode) {
@@ -253,7 +264,8 @@ static size_t cmd_sprint(const Cmd *cmd, char *buf) {
 }
 
 static int cmd_execute(Cmd *cmd) {
-  if (cmd->buf == NULL) return -1;
+  if (cmd->buf == NULL)
+    return -1;
 
   size_t cmd_len = cmd_sprint(cmd, NULL);
 
@@ -308,7 +320,8 @@ static int args_contains(int argc, char **argv, const char *search_arg) {
 }
 
 // Returns the index of 'search_arg' or -1, if it cant be found
-static int args_contains_len(int argc, char **argv, const char *search_arg, size_t arg_len) {
+static int args_contains_len(int argc, char **argv, const char *search_arg,
+                             size_t arg_len) {
   for (size_t i = 0; i < argc; i++) {
     if (strncmp(argv[i], search_arg, arg_len) == 0) {
       return i;
@@ -319,4 +332,45 @@ static int args_contains_len(int argc, char **argv, const char *search_arg, size
 
 static bool arg_eq(int argc, char **argv, size_t idx, const char *arg) {
   return argc > idx && strcmp(argv[idx], arg) == 0;
+}
+
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((format(printf, 1, 2)))
+#endif
+static char *str_fmt_temp(const char *fmt, ...) {
+  static char str_fmt_temp_buf[4096] = {[0] = '\0'};
+  va_list args;
+  va_start(args, fmt);
+
+  vsprintf(str_fmt_temp_buf, fmt, args);
+  va_end(args);
+
+  return str_fmt_temp_buf;
+}
+
+#define gurd_build(directory, build_file, ...)                                 \
+  _internal_gurd_build(directory, build_file,                                  \
+                       (const char **)(char *[]){__VA_ARGS__},                 \
+                       sizeof((char *[]){__VA_ARGS__}) / sizeof(char *))
+
+static bool _internal_gurd_build(const char *directory, const char *build_file,
+                                 const char **args, size_t args_len) {
+  char args_buf[4096];
+
+  args_buf[0] = '\0';
+
+  for (size_t i = 0; i < args_len; i++) {
+    strcat(args_buf, args[i]);
+    strcat(args_buf, " ");
+  }
+
+  int exit_code = 0;
+
+  if (build_file != NULL) {
+    exit_code = systemf("gurd --dir %s %s %s", directory, build_file, args_buf);
+  } else {
+    exit_code = systemf("gurd --dir %s %s", directory, args_buf);
+  }
+
+  return !WEXITSTATUS(exit_code);
 }
