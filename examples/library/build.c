@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
 
 static void copy_lib_header_file(struct file_entry file) {
   char dest_file_buf[256];
-  sprintf(dest_file_buf, INSTALL_INCLUDE_DIR "/%s.%s", file.name,
+  sprintf(dest_file_buf, INSTALL_INCLUDE_DIR "/%s", file.name,
           file.file_ext);
   copy_file(file.path, dest_file_buf);
 }
