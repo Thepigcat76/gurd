@@ -16,6 +16,14 @@ The core component of gurd is the [gurd.sh](./gurd) script that will look for a 
 
 You can change the compiler used to compile the build file by editing [gurd.sh](./gurd). By default, gcc is used.
 
+## Building Gurd Project without Gurd
+
+If you do not want to install gurd, simply drop the header file [gurd.h](./gurd.h) in your project directory or include path and compile the build file using your preferred c compiler.
+
+- Compile build file `clang build.c -o build-file`
+
+- Run build file `./build-file` this will build the program (most programs are output to `./build/`).
+
 ## Utility Header
 
 Gurd also comes with the header [gurd.h](./gurd.h) that includes a variety of utility functions like a cmd builder, string formatting, file and directory helpers.
