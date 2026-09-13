@@ -6,7 +6,7 @@ Run install.sh to install the tool
 
 You can change the install directory by editing [install.sh](./install.sh). By default, /usr/local/bin and /usr/local/include are used.
 
-Look at the 'templates' dir for examples
+Look at the 'examples' dir for examples
 
 # How to use
 
@@ -19,3 +19,4 @@ You can change the compiler used to compile the build file by editing [gurd.sh](
 ## Utility Header
 
 Gurd also comes with the header [gurd.h](./gurd.h) that includes a variety of utility functions like a cmd builder, string formatting, file and directory helpers.
+Most build script will require this so either put it in your include directory or in the project directory.
