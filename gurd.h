@@ -1,4 +1,7 @@
-#include <dirent.h>
+#ifdef _WIN32
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
 #include <errno.h>
 #include <limits.h>
 #include <stdarg.h>
@@ -8,7 +11,14 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <direct.h>
+#else
+#include <dirent.h>
 #include <unistd.h>
+#endif
 
 struct file_entry {
   const char *path;
@@ -22,7 +32,105 @@ typedef struct {
   size_t capacity;
 } Cmd;
 
+#ifdef _WIN32
+static char *join_path(const char *directory, const char *name) {
+  size_t directory_len = strlen(directory);
+  size_t name_len = strlen(name);
+
+  int needs_separator = directory_len > 0 &&
+                        directory[directory_len - 1] != '\\' &&
+                        directory[directory_len - 1] != '/';
+
+  size_t size = directory_len + needs_separator + name_len + 1;
+  char *result = malloc(size);
+
+  if (result == NULL) {
+    return NULL;
+  }
+
+  snprintf(result, size, "%s%s%s", directory, needs_separator ? "\\" : "",
+           name);
+
+  return result;
+}
+#endif
+
 static void walk_dir(const char *path, void (*visit_func)(struct file_entry)) {
+#ifdef _WIN32
+  char *search_pattern = join_path(path, "*");
+
+  if (search_pattern == NULL) {
+    fprintf(stderr, "Out of memory\n");
+    return;
+  }
+
+  WIN32_FIND_DATAA data;
+  HANDLE find_handle = FindFirstFileA(search_pattern, &data);
+
+  free(search_pattern);
+
+  if (find_handle == INVALID_HANDLE_VALUE) {
+    fprintf(stderr, "FindFirstFile failed for \"%s\": error %lu\n", path,
+            GetLastError());
+    return;
+  }
+
+  do {
+    const char *name = data.cFileName;
+
+    /*
+     * Windows can return these special entries.
+     */
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
+      continue;
+    }
+
+    char *entry_path = join_path(path, name);
+
+    if (entry_path == NULL) {
+      fprintf(stderr, "Out of memory\n");
+      break;
+    }
+
+    if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+      walk_dir(entry_path, visit_func);
+      free(entry_path);
+      continue;
+    }
+
+    const char *dot = strrchr(name, '.');
+    const char *file_ext = NULL;
+
+    if (dot != NULL && dot != name) {
+      file_ext = dot + 1;
+    }
+
+    struct file_entry entry = {
+        .path = entry_path,
+        .name = name,
+        .file_ext = file_ext,
+    };
+
+    /*
+     * visit_func must use/copy these values before it returns.
+     */
+    visit_func(entry);
+
+    free(entry_path);
+
+  } while (FindNextFileA(find_handle, &data));
+
+  DWORD error = GetLastError();
+
+  /*
+   * Use FindClose, not CloseHandle, for search handles.
+   */
+  FindClose(find_handle);
+
+  if (error != ERROR_NO_MORE_FILES) {
+    fprintf(stderr, "FindNextFile failed for \"%s\": error %lu\n", path, error);
+  }
+#else
   struct dirent *entry;
   DIR *dp = opendir(path);
   if (dp == NULL) {
@@ -56,9 +164,99 @@ static void walk_dir(const char *path, void (*visit_func)(struct file_entry)) {
   }
 
   closedir(dp);
+#endif
 }
 
 static int remove_dir_recursive(const char *path, bool remove_self) {
+#ifdef _WIN32
+  char *search_pattern = join_path(path, "*");
+
+  if (search_pattern == NULL) {
+    fprintf(stderr, "Out of memory\n");
+    return -1;
+  }
+
+  WIN32_FIND_DATAA data;
+  HANDLE find_handle = FindFirstFileA(search_pattern, &data);
+
+  if (find_handle == INVALID_HANDLE_VALUE) {
+    return -1;
+  }
+
+  int rc = 0;
+
+  do {
+    const char *name = data.cFileName;
+
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
+      continue;
+    }
+
+    char *child = join_path(path, name);
+
+    if (child == NULL) {
+      SetLastError(ERROR_FILENAME_EXCED_RANGE);
+      rc = -1;
+      break;
+    }
+
+    DWORD attributes = data.dwFileAttributes;
+
+    if (attributes & FILE_ATTRIBUTE_DIRECTORY) {
+      /*
+       * Do not recurse into junctions or directory symlinks.
+       * Treat them as directory entries and remove the link itself.
+       */
+      if (attributes & FILE_ATTRIBUTE_REPARSE_POINT) {
+        if (!RemoveDirectoryA(child)) {
+          rc = -1;
+          break;
+        }
+      } else {
+        if (remove_dir_recursive(child, 1) != 0) {
+          rc = -1;
+          break;
+        }
+      }
+    } else {
+      /*
+       * DeleteFile fails for read-only files, so make the file
+       * normal first.
+       */
+      if (attributes & FILE_ATTRIBUTE_READONLY) {
+        if (!SetFileAttributesA(child, attributes & ~FILE_ATTRIBUTE_READONLY)) {
+          rc = -1;
+          break;
+        }
+      }
+
+      if (!DeleteFileA(child)) {
+        rc = -1;
+        break;
+      }
+    }
+
+  } while (FindNextFileA(find_handle, &data));
+
+  DWORD find_error = GetLastError();
+
+  FindClose(find_handle);
+
+  /*
+   * FindNextFile returns false normally when enumeration is complete.
+   */
+  if (rc == 0 && find_error != ERROR_NO_MORE_FILES) {
+    rc = -1;
+  }
+
+  if (rc == 0 && remove_self) {
+    if (!RemoveDirectoryA(path)) {
+      rc = -1;
+    }
+  }
+
+  return rc;
+#else
   DIR *dir = opendir(path);
   if (!dir)
     return -1;
@@ -105,9 +303,16 @@ static int remove_dir_recursive(const char *path, bool remove_self) {
   }
 
   return rc;
+#endif
 }
 
-static int ensure_parent_dirs(const char *filepath, mode_t mode) {
+static int ensure_parent_dirs(const char *filepath) {
+  #ifdef _WIN32
+  #define mkdir(path, ...) _mkdir(path)
+  #define PATH_MAX MAX_PATH
+  #else
+  mode_t mode = 0755;
+  #endif
   char dir[PATH_MAX];
   if (snprintf(dir, sizeof dir, "%s", filepath) >= (int)sizeof dir) {
     errno = ENAMETOOLONG;
@@ -147,6 +352,11 @@ static int ensure_parent_dirs(const char *filepath, mode_t mode) {
   if (mkdir(tmp, mode) != 0 && errno != EEXIST)
     return -1;
   return 0;
+
+  #ifdef _WIN32
+  #undef PATH_MAX
+  #undef mkdir
+  #endif
 }
 
 static int copy_file(const char *src, const char *dst) {
@@ -176,7 +386,13 @@ static int copy_file(const char *src, const char *dst) {
   return 0;
 }
 
-static int make_dirs(const char *directory, mode_t mode) {
+static int make_dirs(const char *directory) {
+  #ifdef _WIN32
+  #define mkdir(path, ...) _mkdir(path)
+  #define PATH_MAX MAX_PATH
+  #else
+  mode_t mode = 0755;
+  #endif
   char tmp[PATH_MAX];
   if (snprintf(tmp, sizeof tmp, "%s", directory) >= (int)sizeof tmp) {
     errno = ENAMETOOLONG;
@@ -198,12 +414,18 @@ static int make_dirs(const char *directory, mode_t mode) {
   if (mkdir(tmp, mode) != 0 && errno != EEXIST)
     return -1;
   return 0;
+
+  #ifdef _WIN32
+  #undef PATH_MAX
+  #undef mkdir
+  #endif
 }
 
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((format(printf, 2, 3)))
 #endif
-static void cmd_appendf(Cmd *cmd, const char *fmt, ...) {
+static void
+cmd_appendf(Cmd *cmd, const char *fmt, ...) {
   if (cmd->buf == NULL) {
     cmd->len = 0;
     cmd->capacity = 16;
@@ -245,16 +467,14 @@ static size_t cmd_fprint(const Cmd *cmd, FILE *f_stream) {
   return len;
 }
 
-#define SIZE_MAX 4096
-
-static size_t cmd_sprint(const Cmd *cmd, char *buf) {
+static size_t cmd_sprint(const Cmd *cmd, char *buf, size_t buf_size) {
   size_t pos = 0;
   if (buf != NULL)
     buf[0] = '\0';
 
   for (size_t i = 0; i < cmd->len; i++) {
     const char *fmt = (i == cmd->len - 1) ? "%s" : "%s ";
-    int n = snprintf(buf ? buf + pos : NULL, buf ? (SIZE_MAX - pos) : 0, fmt,
+    int n = snprintf(buf ? buf + pos : NULL, buf ? (buf_size - pos) : 0, fmt,
                      cmd->buf[i]);
     if (n < 0)
       return pos;
@@ -267,10 +487,10 @@ static int cmd_execute(Cmd *cmd) {
   if (cmd->buf == NULL)
     return -1;
 
-  size_t cmd_len = cmd_sprint(cmd, NULL);
+  size_t cmd_len = cmd_sprint(cmd, NULL, 0);
 
   char cmd_buf[cmd_len + 1];
-  cmd_sprint(cmd, cmd_buf);
+  cmd_sprint(cmd, cmd_buf, cmd_len + 1);
 
   for (size_t i = 0; i < cmd->len; i++) {
     free(cmd->buf[i]);
@@ -286,7 +506,8 @@ static int cmd_execute(Cmd *cmd) {
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((format(printf, 1, 2)))
 #endif
-static int systemf(const char *fmt, ...) {
+static int
+systemf(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
 
@@ -304,9 +525,9 @@ static int systemf(const char *fmt, ...) {
   char str[len + 1];
   vsprintf(str, fmt, args);
 
-  return system(str);
-
   va_end(args);
+
+  return system(str);
 }
 
 // Returns the index of 'search_arg' or -1, if it cant be found
@@ -322,7 +543,7 @@ static int args_contains(int argc, char **argv, const char *search_arg) {
 // Returns the index of 'search_arg' or -1, if it cant be found
 static int args_contains_len(int argc, char **argv, const char *search_arg,
                              size_t arg_len) {
-  for (size_t i = 0; i < argc; i++) {
+  for (int i = 0; i < argc; i++) {
     if (strncmp(argv[i], search_arg, arg_len) == 0) {
       return i;
     }
@@ -337,7 +558,8 @@ static bool arg_eq(int argc, char **argv, size_t idx, const char *arg) {
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((format(printf, 1, 2)))
 #endif
-static char *str_fmt_temp(const char *fmt, ...) {
+static char *
+str_fmt_temp(const char *fmt, ...) {
   static char str_fmt_temp_buf[4096] = {[0] = '\0'};
   va_list args;
   va_start(args, fmt);
@@ -372,5 +594,9 @@ static bool _internal_gurd_build(const char *directory, const char *build_file,
     exit_code = systemf("gurd --dir %s %s", directory, args_buf);
   }
 
+#ifdef _WIN32
+  return exit_code != -1;
+#else
   return !WEXITSTATUS(exit_code);
+#endif
 }
