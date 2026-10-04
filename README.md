@@ -1,10 +1,10 @@
 # Gurd
 
-A simple single header c build tool for linux
+A simple single header c build tool for linux with mostly functional windows compatibility
 
 Run install.sh to install the tool
 
-You can change the install directory by editing [install.sh](./install.sh). By default, /usr/local/bin and /usr/local/include are used.
+You can change the install directory by editing [install.sh](./install.sh)/[install.ps1](./install.ps1). By default, /usr/local/bin and /usr/local/include are used on linux and AppData/Local/Programs/ on windows.
 
 Look at the 'examples' dir for examples
 
@@ -12,9 +12,9 @@ Look at the 'examples' dir for examples
 
 ## Build Script
 
-The core component of gurd is the [gurd.sh](./gurd) script that will look for a build.c file in the current directory or the directory specified with **--dir**. It then compiles build.c, outputs it to the .gurd directory and runs it. The build file can then either run the program directly as a unit build or compile it. Args passed to [gurd.sh](./gurd) are passed on to the build file (except for --dir if provided)
+The core component of gurd is the [gurd.sh](./scripts/linux/gurd)/[gurd.ps1](./scripts/windows/gurd.ps1) script that will look for a build.c file in the current directory or the directory specified with **--dir**. It then compiles build.c, outputs it to the .gurd directory and runs it. The build file can then either run the program directly as a unit build or compile it. Args passed to [gurd.sh](./scripts/linux/gurd)/[gurd.ps1](./scripts/windows/gurd.ps1) are passed on to the build file (except for --dir if provided)
 
-You can change the compiler used to compile the build file by editing [gurd.sh](./gurd). By default, gcc is used.
+You can change the compiler used to compile the build file by editing [gurd.sh](./scripts/linux/gurd) or [gurd.ps1](./scripts/windows/gurd.ps1) on windows. By default, gcc is used.
 
 **Important**: If you are building a library make sure to pass in `--lib` (`gurd --lib`)
 
